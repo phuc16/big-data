@@ -1,0 +1,183 @@
+<!-- filepath: amazon-product-search/templates/index.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h2 class="card-title">Search Amazon Products</h2>
+                <div class="search-container">
+                    <div class="input-group mb-3">
+                        <input type="text" id="search-input" class="form-control form-control-lg" placeholder="Search for products..." aria-label="Search">
+                        <button class="btn btn-primary" type="button" id="search-button">Search</button>
+                    </div>
+                    <div id="search-suggestions" class="search-suggestions"></div>
+                </div>
+                <div class="search-options mt-3">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="search-type" id="search-type-hybrid" value="hybrid" checked>
+                        <label class="form-check-label" for="search-type-hybrid">Hybrid Search</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="search-type" id="search-type-basic" value="basic">
+                        <label class="form-check-label" for="search-type-basic">Basic Search</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="search-type" id="search-type-fuzzy" value="fuzzy">
+                        <label class="form-check-label" for="search-type-fuzzy">Fuzzy Search</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="search-type" id="search-type-semantic" value="semantic">
+                        <label class="form-check-label" for="search-type-semantic">Semantic Search</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="search-type" id="search-type-faceted" value="faceted">
+                        <label class="form-check-label" for="search-type-faceted">Faceted Search</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-3">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h3 class="card-title">Filters</h3>
+                
+                <div class="accordion" id="filter-accordion">
+                    <!-- Categories Filter -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="heading-categories">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-categories" aria-expanded="false" aria-controls="collapse-categories">
+                                Categories
+                            </button>
+                        </h2>
+                        <div id="collapse-categories" class="accordion-collapse collapse" aria-labelledby="heading-categories" data-bs-parent="#filter-accordion">
+                            <div class="accordion-body filter-list">
+                                {% for category in categories %}
+                                <div class="form-check">
+                                    <input class="form-check-input filter-checkbox" type="checkbox" id="category-{{ loop.index }}" name="category" value="{{ category }}">
+                                    <label class="form-check-label" for="category-{{ loop.index }}">
+                                        {{ category }}
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Brands Filter -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="heading-brands">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-brands" aria-expanded="false" aria-controls="collapse-brands">
+                                Brands
+                            </button>
+                        </h2>
+                        <div id="collapse-brands" class="accordion-collapse collapse" aria-labelledby="heading-brands" data-bs-parent="#filter-accordion">
+                            <div class="accordion-body filter-list">
+                                {% for brand in brands %}
+                                <div class="form-check">
+                                    <input class="form-check-input filter-checkbox" type="checkbox" id="brand-{{ loop.index }}" name="brand" value="{{ brand }}">
+                                    <label class="form-check-label" for="brand-{{ loop.index }}">
+                                        {{ brand }}
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Manufacturers Filter -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="heading-manufacturers">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-manufacturers" aria-expanded="false" aria-controls="collapse-manufacturers">
+                                Manufacturers
+                            </button>
+                        </h2>
+                        <div id="collapse-manufacturers" class="accordion-collapse collapse" aria-labelledby="heading-manufacturers" data-bs-parent="#filter-accordion">
+                            <div class="accordion-body filter-list">
+                                {% for manufacturer in manufacturers %}
+                                <div class="form-check">
+                                    <input class="form-check-input filter-checkbox" type="checkbox" id="manufacturer-{{ loop.index }}" name="manufacturer" value="{{ manufacturer }}">
+                                    <label class="form-check-label" for="manufacturer-{{ loop.index }}">
+                                        {{ manufacturer }}
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Rating Filter -->
+                    <div class="accordion-item">
+                        <h2 class="accordion-header" id="heading-rating">
+                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-rating" aria-expanded="false" aria-controls="collapse-rating">
+                                Rating
+                            </button>
+                        </h2>
+                        <div id="collapse-rating" class="accordion-collapse collapse" aria-labelledby="heading-rating" data-bs-parent="#filter-accordion">
+                            <div class="accordion-body">
+                                <div class="mb-3">
+                                    <label for="min-rating" class="form-label">Minimum Rating: <span id="min-rating-value">0</span></label>
+                                    <input type="range" class="form-range" min="0" max="5" step="0.5" id="min-rating">
+                                </div>
+                                <div class="mb-3">
+                                    <label for="max-rating" class="form-label">Maximum Rating: <span id="max-rating-value">5</span></label>
+                                    <input type="range" class="form-range" min="0" max="5" step="0.5" id="max-rating" value="5">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mt-3">
+                    <button id="apply-filters" class="btn btn-primary w-100">Apply Filters</button>
+                    <button id="reset-filters" class="btn btn-outline-secondary w-100 mt-2">Reset Filters</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-9">
+        <div id="search-results" class="row row-cols-1 g-4">
+            <!-- Search results will be displayed here -->
+            <div class="col text-center mt-5">
+                <h3 class="text-muted">Enter a search query to find products</h3>
+            </div>
+        </div>
+        
+        <div id="loading-indicator" class="text-center my-5 d-none">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Searching...</p>
+        </div>
+        
+        <div id="no-results" class="text-center my-5 d-none">
+            <h3 class="text-muted">No results found</h3>
+            <p>Try a different search query or adjust your filters</p>
+        </div>
+        
+        <div class="text-center mt-4">
+            <button id="load-more" class="btn btn-outline-primary d-none">Load More Results</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // Initialize min/max rating display
+        document.getElementById('min-rating').addEventListener('input', (e) => {
+            document.getElementById('min-rating-value').textContent = e.target.value;
+        });
+        document.getElementById('max-rating').addEventListener('input', (e) => {
+            document.getElementById('max-rating-value').textContent = e.target.value;
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.0
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    networks:
+      - amazon-search-network
+
+  app:
+    build: .
+    depends_on:
+      - elasticsearch
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - ELASTICSEARCH_HOST=elasticsearch
+      - ELASTICSEARCH_PORT=9200
+      - DATA_CSV_PATH=data/data.csv
+      - DATA_METADATA_PATH=data/metadata.csv
+    networks:
+      - amazon-search-network
+
+networks:
+  amazon-search-network:
+
+volumes:
+  esdata:
