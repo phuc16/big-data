@@ -5,11 +5,39 @@ from app.services.embedding import get_text_embedding
 
 def basic_search(query, size=10):
     """
-    Basic keyword search using the query string
+    Enhanced basic keyword search with better relevance
     """
     s = Search(using=es_client, index=INDEX_NAME)
-    q = Q("multi_match", query=query, fields=["name^3", "brand^2", "categories", "reviews.text", "reviews.title^2"])
+    
+    # Create a more nuanced query
+    q = Q(
+        "bool",
+        should=[
+            # Exact matches in name and brand (high boost)
+            Q("match_phrase", name={"query": query, "boost": 5.0}),
+            Q("match_phrase", brand={"query": query, "boost": 4.0}),
+            
+            # General field matching
+            Q("multi_match", 
+              query=query, 
+              fields=["name^3", "brand^2", "categories", "reviews.text", "reviews.title^2"],
+              type="best_fields",
+              minimum_should_match="30%"),
+              
+            # Partial matching for shorter queries
+            Q("multi_match",
+              query=query,
+              fields=["name", "reviews.title", "reviews.text"],
+              type="phrase_prefix") if len(query.split()) < 3 else None
+        ]
+    )
+    
     s = s.query(q)
+    
+    # Add highlighting
+    s = s.highlight_options(pre_tags=['<strong>'], post_tags=['</strong>'])
+    s = s.highlight('name', 'brand', 'reviews.text', 'reviews.title')
+    
     response = s.execute()
     
     return response.hits
@@ -98,18 +126,28 @@ def facet_search(query, filters=None, size=10):
 
 def semantic_search(query, size=10):
     """
-    Semantic search using vector embeddings
+    Semantic search using vector embeddings with pre-filtering
     """
     # Get vector embedding for the query
     query_vector = get_text_embedding(query)
     
-    # Perform vector search
-    vector_query = {
+    # First do a basic text search to pre-filter candidates
+    prefilter_query = {
+        "multi_match": {
+            "query": query,
+            "fields": ["name", "brand", "categories", "reviews.text", "reviews.title"],
+            "minimum_should_match": "20%"  # Low threshold to cast wide net
+        }
+    }
+    
+    # Then apply KNN on the filtered set
+    final_query = {
         "knn": {
             "field": "text_vector",
             "query_vector": query_vector,
             "k": size,
-            "num_candidates": 100
+            "num_candidates": 100,
+            "filter": prefilter_query
         }
     }
     
@@ -117,7 +155,7 @@ def semantic_search(query, size=10):
         index=INDEX_NAME,
         body={
             "size": size,
-            "query": vector_query,
+            "query": final_query,
             "_source": ["id", "name", "brand", "categories", "reviews"]
         }
     )
@@ -126,29 +164,40 @@ def semantic_search(query, size=10):
 
 def hybrid_search(query, size=10):
     """
-    Hybrid search combining keyword and semantic search
+    Hybrid search combining keyword and semantic search with improved relevance
     """
     # Get vector embedding for the query
     query_vector = get_text_embedding(query)
     
-    # Prepare the hybrid query
+    # Prepare the hybrid query with required keyword match
     hybrid_query = {
         "bool": {
-            "should": [
-                # Keyword match (BM25)
+            "must": [
+                # Require at least some keyword match (filters out completely irrelevant docs)
                 {
                     "multi_match": {
                         "query": query,
                         "fields": ["name^3", "brand^2", "categories", "reviews.text", "reviews.title^2"],
-                        "boost": 0.4
+                        "minimum_should_match": "30%"  # At least 30% of terms must match
+                    }
+                }
+            ],
+            "should": [
+                # Boost score with more specific keyword match
+                {
+                    "multi_match": {
+                        "query": query,
+                        "fields": ["name^4", "brand^3", "categories^2", "reviews.text", "reviews.title^2"],
+                        "type": "phrase",  # Favor exact phrases
+                        "boost": 2.0
                     }
                 },
-                # Vector similarity
+                # Vector similarity with controlled influence
                 {
                     "script_score": {
                         "query": {"match_all": {}},
                         "script": {
-                            "source": "cosineSimilarity(params.query_vector, 'text_vector') + 1.0",
+                            "source": "cosineSimilarity(params.query_vector, 'text_vector') * 0.5",  # Reduced from 0.7
                             "params": {"query_vector": query_vector}
                         }
                     }
@@ -162,7 +211,16 @@ def hybrid_search(query, size=10):
         body={
             "size": size,
             "query": hybrid_query,
-            "_source": ["id", "name", "brand", "categories", "reviews"]
+            "_source": ["id", "name", "brand", "categories", "reviews"],
+            "highlight": {
+                "fields": {
+                    "name": {},
+                    "reviews.text": {},
+                    "reviews.title": {}
+                },
+                "pre_tags": ["<strong>"],
+                "post_tags": ["</strong>"]
+            }
         }
     )
     
