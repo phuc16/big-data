@@ -73,6 +73,17 @@ async def search(
         filters["brand"] = brand
     if manufacturer:
         filters["manufacturer"] = manufacturer
+
+    print(f"Search query: {q}, Type: {search_type}, Filters: {filters}, Size: {size}")
+        
+    # Add rating filter
+    if min_rating > 0.0 or max_rating < 5.0:
+        filters["reviews.rating"] = {
+            "range": {
+                "gte": min_rating,
+                "lte": max_rating
+            }
+        }
     
     # Execute search
     if search_type == "faceted":
@@ -87,7 +98,8 @@ async def search(
             }
         }
     else:
-        results = SearchService.search(q, search_type=search_type, size=size)
+        # For non-faceted search types, we need to apply the filters in the service layer
+        results = SearchService.search(q, search_type=search_type, filters=filters, size=size)
         if search_type in ["semantic", "hybrid"]:
             # Format results from direct ES response
             return {

@@ -93,10 +93,17 @@ def facet_search(query, filters=None, size=10):
     # Apply filters if provided
     if filters:
         for field, values in filters.items():
-            if isinstance(values, list):
-                for value in values:
-                    s = s.filter("term", **{field: value})
+            if field == "reviews.rating" and isinstance(values, dict) and "range" in values:
+                # Handle rating range filter
+                range_params = values["range"]
+                s = s.filter("range", **{field: range_params})
+            elif isinstance(values, list):
+                # Create a should query for multiple values of the same field (OR operation)
+                if values:  # Only if the list is not empty
+                    should_queries = [Q("term", **{field: value}) for value in values]
+                    s = s.filter('bool', should=should_queries, minimum_should_match=1)
             else:
+                # Single value filter
                 s = s.filter("term", **{field: values})
     
     # Add aggregations for facets
@@ -112,6 +119,9 @@ def facet_search(query, filters=None, size=10):
         {"from": 5.0}
     ])
     
+    # Limit size
+    s = s[0:size]
+    
     response = s.execute()
     
     return {
@@ -124,19 +134,47 @@ def facet_search(query, filters=None, size=10):
         }
     }
 
-def semantic_search(query, size=10):
+def semantic_search(query, filters=None, size=10):
     """
     Semantic search using vector embeddings with pre-filtering
     """
     # Get vector embedding for the query
     query_vector = get_text_embedding(query)
     
+    # Create filter queries if filters are provided
+    filter_queries = []
+    if filters:
+        for field, values in filters.items():
+            if field == "reviews.rating" and isinstance(values, dict) and "range" in values:
+                # Handle rating range filter
+                range_params = values["range"]
+                filter_queries.append({"range": {field: range_params}})
+            elif isinstance(values, list):
+                # Handle list of values (OR operation)
+                if values:
+                    terms_query = {"terms": {field: values}}
+                    filter_queries.append(terms_query)
+            else:
+                # Handle single value
+                filter_queries.append({"term": {field: values}})
+    
     # First do a basic text search to pre-filter candidates
     prefilter_query = {
+        "bool": {
+            "must": {
+                "multi_match": {
+                    "query": query,
+                    "fields": ["name", "brand", "categories", "reviews.text", "reviews.title"],
+                    "minimum_should_match": "20%"  # Low threshold to cast wide net
+                }
+            },
+            "filter": filter_queries
+        }
+    } if filter_queries else {
         "multi_match": {
             "query": query,
             "fields": ["name", "brand", "categories", "reviews.text", "reviews.title"],
-            "minimum_should_match": "20%"  # Low threshold to cast wide net
+            "minimum_should_match": "20%"
         }
     }
     
@@ -162,13 +200,30 @@ def semantic_search(query, size=10):
     
     return response["hits"]["hits"]
 
-def hybrid_search(query, size=10):
+def hybrid_search(query, filters=None, size=10):
     """
     Hybrid search combining keyword and semantic search with improved relevance
     """
     # Get vector embedding for the query
     query_vector = get_text_embedding(query)
     
+    # Create filter queries if filters are provided
+    filter_queries = []
+    if filters:
+        for field, values in filters.items():
+            if field == "reviews.rating" and isinstance(values, dict) and "range" in values:
+                # Handle rating range filter
+                range_params = values["range"]
+                filter_queries.append({"range": {field: range_params}})
+            elif isinstance(values, list):
+                # Handle list of values (OR operation)
+                if values:
+                    terms_query = {"terms": {field: values}}
+                    filter_queries.append(terms_query)
+            else:
+                # Handle single value
+                filter_queries.append({"term": {field: values}})
+    print(f"Hybrid search filters: {filter_queries}")
     # Prepare the hybrid query with required keyword match
     hybrid_query = {
         "bool": {
@@ -195,17 +250,18 @@ def hybrid_search(query, size=10):
                 # Vector similarity with controlled influence
                 {
                     "script_score": {
-                        "query": {"match_all": {}},
+                        "query": {query},
                         "script": {
                             "source": "cosineSimilarity(params.query_vector, 'text_vector') * 0.5",  # Reduced from 0.7
                             "params": {"query_vector": query_vector}
                         }
                     }
                 }
-            ]
+            ],
+            "filter": filter_queries
         }
     }
-    
+    print(f"Final query: {hybrid_query}")
     response = es_client.search(
         index=INDEX_NAME,
         body={

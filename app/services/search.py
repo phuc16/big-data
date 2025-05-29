@@ -48,9 +48,9 @@ class SearchService:
         elif search_type == "faceted":
             return facet_search(processed_query, filters, size)
         elif search_type == "semantic":
-            return semantic_search(processed_query, size)
+            return semantic_search(processed_query, filters, size)
         elif search_type == "hybrid":
-            return hybrid_search(processed_query, size)
+            return hybrid_search(processed_query, filters, size)
         else:
             return basic_search(processed_query, size)  # Default to basic search
     
