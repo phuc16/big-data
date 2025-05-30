@@ -9,28 +9,31 @@ def basic_search(query, size=10):
     """
     s = Search(using=es_client, index=INDEX_NAME)
     
-    # Create a more nuanced query
-    q = Q(
-        "bool",
-        should=[
-            # Exact matches in name and brand (high boost)
-            Q("match_phrase", name={"query": query, "boost": 5.0}),
-            Q("match_phrase", brand={"query": query, "boost": 4.0}),
-            
-            # General field matching
-            Q("multi_match", 
-              query=query, 
-              fields=["name^3", "brand^2", "categories", "reviews.text", "reviews.title^2"],
-              type="best_fields",
-              minimum_should_match="30%"),
-              
-            # Partial matching for shorter queries
+    # Build the should clauses list
+    should_clauses = [
+        # Exact matches in name and brand (high boost)
+        Q("match_phrase", name={"query": query, "boost": 5.0}),
+        Q("match_phrase", brand={"query": query, "boost": 4.0}),
+        
+        # General field matching
+        Q("multi_match", 
+          query=query, 
+          fields=["name^3", "brand^2", "categories", "reviews.text", "reviews.title^2"],
+          type="best_fields",
+          minimum_should_match="30%")
+    ]
+    
+    # Conditionally add the phrase_prefix query only if query has fewer than 3 words
+    if len(query.split()) < 3:
+        should_clauses.append(
             Q("multi_match",
               query=query,
               fields=["name", "reviews.title", "reviews.text"],
-              type="phrase_prefix") if len(query.split()) < 3 else None
-        ]
-    )
+              type="phrase_prefix")
+        )
+    
+    # Create the bool query with the should clauses
+    q = Q("bool", should=should_clauses)
     
     s = s.query(q)
     
@@ -158,44 +161,29 @@ def semantic_search(query, filters=None, size=10):
                 # Handle single value
                 filter_queries.append({"term": {field: values}})
     
-    # First do a basic text search to pre-filter candidates
-    prefilter_query = {
-        "bool": {
-            "must": {
-                "multi_match": {
-                    "query": query,
-                    "fields": ["name", "brand", "categories", "reviews.text", "reviews.title"],
-                    "minimum_should_match": "20%"  # Low threshold to cast wide net
-                }
-            },
-            "filter": filter_queries
-        }
-    } if filter_queries else {
-        "multi_match": {
-            "query": query,
-            "fields": ["name", "brand", "categories", "reviews.text", "reviews.title"],
-            "minimum_should_match": "20%"
-        }
-    }
-    
-    # Then apply KNN on the filtered set
-    final_query = {
+    # Construct the search body with knn as a top-level parameter
+    search_body = {
+        "size": size,
+        "_source": ["id", "name", "brand", "categories", "reviews"],
         "knn": {
             "field": "text_vector",
             "query_vector": query_vector,
             "k": size,
-            "num_candidates": 100,
-            "filter": prefilter_query
+            "num_candidates": 100
         }
     }
     
+    # Add filter if needed
+    if filter_queries:
+        search_body["knn"]["filter"] = {
+            "bool": {
+                "filter": filter_queries
+            }
+        }
+    
     response = es_client.search(
         index=INDEX_NAME,
-        body={
-            "size": size,
-            "query": final_query,
-            "_source": ["id", "name", "brand", "categories", "reviews"]
-        }
+        body=search_body
     )
     
     return response["hits"]["hits"]
@@ -250,7 +238,7 @@ def hybrid_search(query, filters=None, size=10):
                 # Vector similarity with controlled influence
                 {
                     "script_score": {
-                        "query": {query},
+                        "query": {"match_all": {}},
                         "script": {
                             "source": "cosineSimilarity(params.query_vector, 'text_vector') * 0.5",  # Reduced from 0.7
                             "params": {"query_vector": query_vector}
@@ -272,7 +260,7 @@ def hybrid_search(query, filters=None, size=10):
                 "fields": {
                     "name": {},
                     "reviews.text": {},
-                    "reviews.title": {}
+                    "reviews.title": {},
                 },
                 "pre_tags": ["<strong>"],
                 "post_tags": ["</strong>"]
